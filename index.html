@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SingMyTone</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="lame.min.js"></script>
+    <script src="https://unpkg.com/tone@14.7.77/dist/Tone.js"></script>
+</head>
+<body>
+    <h1>SING MY <span>TONE</span></h1>
+    <button id="start-button">HUM FOR 5 SECONDS</button>
+    <div id="pitch-display"></div>
+    <input type="file" id="song-file" accept="audio/*">
+    <button id="analyze-button">ANALYZE SONG</button>
+    <div id="song-pitch-display"></div>
+    <button id="download-res">DOWNLOAD THE RESULTS</button>
+    <!-- Scripts -->
+    <script type="module" src="script.js"></script>
+</body>
+</html>
