@@ -2,7 +2,18 @@ body {
     font-family: Arial, sans-serif;
     text-align: center;
     margin: 0;
+    padding: 0;
     background-color: #000000;
+}
+
+::-webkit-scrollbar {
+    display: none;
+}
+
+input[type=file]::file-selector-button {
+    margin-right: 1vw;
+    border-radius: .2em;
+    background-color: #FFB300;
 }
 
 h1 {
@@ -15,7 +26,7 @@ h1 {
 span {
     background-color: #FFB300;
     color: black;
-    padding: 20px;
+    padding: 1vw;
     border-radius: 10px;
 }
 
@@ -45,7 +56,8 @@ button:hover {
     background-color: #c58a00;
 }
 
-#pitch-display, #song-pitch-display {
+#pitch-display,
+#song-pitch-display {
     font-size: 1.5em;
     font-weight: bold;
     margin-top: 1em;
@@ -54,8 +66,9 @@ button:hover {
 }
 
 #song-file {
-    width: 80%;
+    width: 70%;
     font-size: 2em;
+    margin: 10%;
     margin-bottom: 2rem;
     margin-top: 0;
     padding: 0.5rem 1rem;
@@ -68,4 +81,22 @@ button:hover {
 
 ::placeholder {
     color: #c0a159;
+}
+
+@media screen and (max-width: 780px) {
+    h1 {
+        font-size: 8vw;
+    }
+
+    span {
+        padding: 15px;
+    }
+
+    button {
+        font-size: 5vw;
+    }
+
+    #song-file {
+        font-size: 6vw;
+    }
 }

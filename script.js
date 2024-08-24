@@ -144,8 +144,15 @@ function calculateAveragePitch() {
 
     const averagePitch = filteredPitches.reduce((a, b) => a + b, 0) / filteredPitches.length;
     voicePitch = averagePitch;
-    pitchDisplay.textContent = `Pitch data collected successfully`;
+    pitchDisplay.textContent = `Tone: ${convert(averagePitch)}`;
     pitchValues.length = 0;
+}
+
+function convert(pitch) {
+    const Clowest = 16.35;
+    const move = Math.floor(Math.log2(pitch / Clowest) * 12);
+    const note = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "G#", "A", "Bb", "B"];
+    return note[move % 12] + Math.floor(move / 12);
 }
 
 startButton.addEventListener('click', startAudioProcessing);
@@ -197,7 +204,7 @@ analyzeButton.addEventListener('click', async () => {
     const fileInput = document.getElementById('song-file');
     file = fileInput.files[0];
     songPitch = await analyzeSong(file);
-    songPitchDisplay.textContent = `Analyzed successfully`;
+    songPitchDisplay.textContent = `Song tone: ${convert(songPitch)}`;
 
     pitchDifference = calculatePitchDifference(songPitch, voicePitch);
 
