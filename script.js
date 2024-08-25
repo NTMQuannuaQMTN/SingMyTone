@@ -157,7 +157,7 @@ downloadButton.addEventListener('click', async () => {
         console.log('File:', file);
 
         if (!transposedAudioBuffer) {
-            alert('No transposed audio available for download.');
+            console.log('No transposed audio available for download.');
             return;
         }
 
