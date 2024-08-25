@@ -1,4 +1,4 @@
-import { PitchShifter } from './soundtouch.min.js';
+import { PitchShifter } from "./soundtouch.min.js";
 
 const startButton = document.getElementById('start-button');
 const pitchDisplay = document.getElementById('pitch-display');
@@ -18,76 +18,20 @@ analyser.fftSize = 2048;
 analyser.smoothingTimeConstant = 0.3;
 let arrayBuffer, audioBuffer;
 let source;
-let handleAudioDataInterval;
 
 const pitchValues = [];
 const noiseThreshold = 20;
 const spectralSubtractionFactor = 0.8;
 
-function autoCorrelate(buffer, sampleRate) {
-    const SIZE = buffer.length;
-    const MAX_SAMPLES = Math.floor(SIZE/2);
-    let best_offset = -1;
-    let best_correlation = 0;
-    let rms = 0;
-    let foundGoodCorrelation = false;
-    let correlations = new Array(MAX_SAMPLES);
-
-    for (let i=0; i<SIZE; i++) {
-        let val = buffer[i];
-        rms += val*val;
-    }
-    rms = Math.sqrt(rms/SIZE);
-    if (rms<0.01) // not enough signal
-        return -1;
-
-    let lastCorrelation=1;
-    for (let offset = 0; offset < MAX_SAMPLES; offset++) {
-        let correlation = 0;
-
-        for (let i=0; i<MAX_SAMPLES; i++) {
-            correlation += Math.abs((buffer[i])-(buffer[i+offset]));
-        }
-
-        correlation = 1 - (correlation/MAX_SAMPLES);
-        correlations[offset] = correlation; // store it, for the tweaking we need to do below.
-        if ((correlation>0.9) && (correlation > lastCorrelation)) {
-            foundGoodCorrelation = true;
-            if (correlation > best_correlation) {
-                best_correlation = correlation;
-                best_offset = offset;
-            }
-        } else if (foundGoodCorrelation) {
-            // short-circuit - we found a good correlation, then a bad one, so we'd just be seeing copies from here.
-            // Now we need to tweak the offset - by interpolating between the values to the left and right of the
-            // best offset, and shifting it a bit.  This is complex, and HACKY in this code (happy to take PRs!) -
-            // we need to do a curve fit on correlations[] around best_offset in order to better determine precise
-            // (anti-aliased) offset.
-
-            // we know best_offset >=1, 
-            // since foundGoodCorrelation cannot go to true until the second pass (offset=1), and 
-            // we can't drop into this clause until the following pass (else if).
-            let shift = (correlations[best_offset+1] - correlations[best_offset-1])/correlations[best_offset];  
-            return sampleRate/(best_offset+(8*shift));
-        }
-        lastCorrelation = correlation;
-    }
-    if (best_correlation > 0.01) {
-        // console.log("f = " + sampleRate/best_offset + "Hz (rms: " + rms + " confidence: " + best_correlation + ")")
-        return sampleRate/best_offset;
-    }
-    return -1;
-}
-
 function updatePitch(analyserNode, sampleRate) {
     const bufferLength = analyserNode.fftSize;
     const buffer = new Float32Array(bufferLength);
     analyserNode.getFloatTimeDomainData(buffer);
-    const ac = autoCorrelate(buffer, sampleRate);
-    if (ac === -1) {
-        return null;
+    const pitch = YINPitchDetection(buffer, sampleRate);
+    if (isFinite(pitch) && pitch > 0) {
+        return pitch;
     } else {
-        return ac;
+        return null;
     }
 }
 
@@ -108,7 +52,9 @@ function startAudioProcessing() {
                 const pitch = updatePitch(analyser, audioContext.sampleRate);
                 if (pitch !== null) {
                     pitchValues.push(pitch);
-                    pitchDisplay.textContent = `Pitch: ${pitch.toFixed(2)} Hz`;
+                    pitchDisplay.textContent = `Detecting...`;
+                } else {
+                    pitchDisplay.textContent = 'Detecting...';
                 }
             }, 100);
 
@@ -134,15 +80,14 @@ function calculateAveragePitch() {
         return;
     }
 
-    // Filter out outliers (values that are too low or too high for human voice)
-    const filteredPitches = pitchValues.filter(pitch => pitch > 50 && pitch < 500);
+    const validPitches = pitchValues.filter(pitch => isFinite(pitch) && pitch > 50 && pitch < 500);
 
-    if (filteredPitches.length === 0) {
+    if (validPitches.length === 0) {
         pitchDisplay.textContent = `No valid pitch data collected`;
         return;
     }
 
-    const averagePitch = filteredPitches.reduce((a, b) => a + b, 0) / filteredPitches.length;
+    const averagePitch = validPitches.reduce((a, b) => a + b, 0) / validPitches.length;
     voicePitch = averagePitch;
     pitchDisplay.textContent = `Pitch data collected successfully`;
     pitchValues.length = 0;
@@ -152,12 +97,11 @@ startButton.addEventListener('click', startAudioProcessing);
 
 downloadButton.addEventListener('click', async () => {
     try {
-        downloadButton.textContent = "TRANSPOSING AND DOWNLOADING, PLEASE WAIT"
         const file = document.getElementById('song-file').files[0];
         console.log('File:', file);
 
         if (!transposedAudioBuffer) {
-            alert('Wait please.');
+            alert('No transposed audio available for download.');
             return;
         }
 
@@ -176,7 +120,7 @@ downloadButton.addEventListener('click', async () => {
         URL.revokeObjectURL(url);
 
         console.log('Download initiated');
-        downloadButton.textContent = "DOWNLOAD THE RESULTS"
+        downloadButton.textContent = "DOWNLOAD THE RESULTS";
     } catch (error) {
         console.error('Error in download process:', error);
         alert('An error occurred while preparing the download. Please check the console for details.');
@@ -184,11 +128,15 @@ downloadButton.addEventListener('click', async () => {
 });
 
 function calculatePitchDifference(songPitch, voicePitch) {
+    if (!isFinite(songPitch) || !isFinite(voicePitch) || songPitch <= 0 || voicePitch <= 0) {
+        console.error('Invalid pitch values for difference calculation');
+        return 0;
+    }
     const Clowest = 16.35;
     const moveSong = Math.floor(Math.log2(songPitch / Clowest) * 12);
     const moveVoice = Math.floor(Math.log2(voicePitch / Clowest) * 12);
-    console.log(moveSong);
-    console.log(moveVoice);
+    console.log('Song move:', moveSong);
+    console.log('Voice move:', moveVoice);
     return moveVoice - moveSong;
 }
 
@@ -197,60 +145,54 @@ analyzeButton.addEventListener('click', async () => {
     const fileInput = document.getElementById('song-file');
     file = fileInput.files[0];
     songPitch = await analyzeSong(file);
-    songPitchDisplay.textContent = `Song analyzing successfully`;
+    if (songPitch !== null) {
+        songPitchDisplay.textContent = `Song analyzed successfully`;
+    } else {
+        songPitchDisplay.textContent = 'Unable to detect song pitch';
+        analyzeButton.textContent = 'ANALYZE SONG';
+        return;
+    }
 
     pitchDifference = calculatePitchDifference(songPitch, voicePitch);
 
     try {
-        // Show a loading indicator
         analyzeButton.disabled = true;
-
         transposedAudioBuffer = await transposeAudio(file, pitchDifference);
         console.log("Transposition complete");
-
-        // Enable download button or perform further actions
         downloadButton.disabled = false;
     } catch (error) {
         console.error("Error during transposition:", error);
     } finally {
-        // Reset button state
         analyzeButton.disabled = false;
         analyzeButton.textContent = 'ANALYZE SONG';
     }
 });
 
 async function transposeAudio(file, pitchDifference) {
-    // Ensure we have the audio buffer
     if (!audioBuffer) {
         arrayBuffer = await readFileAsArrayBuffer(file);
         audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
     }
 
     const pitchShift = Math.pow(2, pitchDifference / 12);
-    
-    // Create a new audio context for offline processing
+
     const offlineContext = new OfflineAudioContext(
         audioBuffer.numberOfChannels,
         audioBuffer.length,
         audioBuffer.sampleRate
     );
 
-    // Create source node
     const source = offlineContext.createBufferSource();
     source.buffer = audioBuffer;
 
-    // Create pitch shifter node
     const pitchShifter = new PitchShifter(offlineContext, audioBuffer, 4096);
     pitchShifter.pitch = pitchShift;
 
-    // Connect nodes
     source.connect(pitchShifter.node);
     pitchShifter.node.connect(offlineContext.destination);
 
-    // Start the source
     source.start();
 
-    // Render the audio
     return offlineContext.startRendering().then(renderedBuffer => {
         console.log("Pitch-shifted buffer created:", renderedBuffer);
         return renderedBuffer;
@@ -258,66 +200,102 @@ async function transposeAudio(file, pitchDifference) {
 }
 
 async function analyzeSong(file) {
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    const analyser = audioContext.createAnalyser();
-    analyser.fftSize = 2048;
-    analyser.smoothingTimeConstant = 0.3;
-
     try {
-        arrayBuffer = await readFileAsArrayBuffer(file);
-        audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-        window.audioBuffer = audioBuffer;
-        console.log(window.audioBuffer);
+        const arrayBuffer = await readFileAsArrayBuffer(file);
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
 
-        window.originalArrayBuffer = arrayBuffer;
+        const sampleRate = audioBuffer.sampleRate;
+        const analyzeDuration = 30; // Analyze 30 seconds
+        const analyzeLength = Math.min(analyzeDuration * sampleRate, audioBuffer.length);
 
-        const source = audioContext.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(analyser);
-        source.start();
+        const channelData = audioBuffer.getChannelData(0).slice(0, analyzeLength);
 
-        // Wait for a short duration to gather data
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        console.log('Original Audio Buffer Data:', audioBuffer.getChannelData(0).slice(0, 10));
-        const frequencyData = new Uint8Array(analyser.frequencyBinCount);
-        analyser.getByteFrequencyData(frequencyData);
+        const pitches = [];
+        const frameSize = 2048;
+        const hopSize = 512;
 
-        let peakFrequency = 0;
-        let peakValue = 0;
-        for (let i = 0; i < frequencyData.length; i++) {
-            const value = frequencyData[i];
-            if (value > peakValue) {
-                peakFrequency = i * audioContext.sampleRate / analyser.fftSize;
-                peakValue = value;
+        for (let i = 0; i < channelData.length - frameSize; i += hopSize) {
+            const frame = channelData.slice(i, i + frameSize);
+            const pitch = YINPitchDetection(frame, sampleRate);
+            if (pitch > 0) {
+                pitches.push(pitch);
             }
         }
 
-        // Close audio context
-        audioContext.close();
+        if (pitches.length === 0) {
+            console.log('No valid pitches detected');
+            return null;
+        }
 
-        // Return the peak frequency as the pitch value
-        return peakFrequency;
+        // Sort pitches and take the median
+        pitches.sort((a, b) => a - b);
+        const medianPitch = pitches[Math.floor(pitches.length / 2)];
+
+        console.log('Detected pitches:', pitches);
+        console.log('Median pitch:', medianPitch);
+
+        return medianPitch;
     } catch (error) {
-        console.error('Error analyzing song:', error);
+        console.error('Error processing the audio file:', error);
         return null;
     }
 }
 
-function wait(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+function YINPitchDetection(buffer, sampleRate) {
+    const threshold = 0.10; // Threshold for peak detection
+    const minFreq = 100;    // Minimum frequency to detect (human voice lower limit)
+    const maxFreq = 5000;   // Maximum frequency (upper voice range, including B6)
+
+    const bufferLength = buffer.length;
+    const yinBuffer = new Float32Array(bufferLength / 2);
+
+    let tau;
+    let minTau = -1;
+
+    // Step 1: Autocorrelation
+    for (tau = 1; tau < yinBuffer.length; tau++) {
+        let sum = 0;
+        for (let i = 0; i < yinBuffer.length; i++) {
+            const delta = buffer[i] - buffer[i + tau];
+            sum += delta * delta;
+        }
+        yinBuffer[tau] = sum / tau;
+    }
+
+    // Step 2: Cumulative mean normalization
+    let runningSum = 0;
+    for (tau = 1; tau < yinBuffer.length; tau++) {
+        runningSum += yinBuffer[tau];
+        yinBuffer[tau] *= tau / runningSum;
+    }
+
+    // Step 3: Find the first minimum below the threshold
+    for (tau = 1; tau < yinBuffer.length; tau++) {
+        if (yinBuffer[tau] < threshold && (minTau === -1 || yinBuffer[tau] < yinBuffer[minTau])) {
+            minTau = tau;
+        }
+    }
+
+    // Step 4: Convert tau to frequency
+    if (minTau !== -1) {
+        const detectedFreq = sampleRate / minTau;
+
+        // Ensure the detected frequency is within the expected range
+        if (detectedFreq >= minFreq && detectedFreq <= maxFreq) {
+            return detectedFreq;
+        }
+    }
+
+    return -1; // No valid pitch detected
 }
 
 async function readFileAsArrayBuffer(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        const blob = new Blob([file], { type: file.type }); // Create a Blob object from the File object
-        reader.onload = () => {
-            resolve(reader.result);
-        };
-        reader.onerror = () => {
-            reject(reader.error);
-        };
-        reader.readAsArrayBuffer(blob); // Pass the Blob object to readAsArrayBuffer
+        const blob = new Blob([file], { type: file.type });
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsArrayBuffer(blob);
     });
 }
 
